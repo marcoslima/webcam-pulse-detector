@@ -5,10 +5,11 @@ from cv2 import moveWindow
 import argparse
 import numpy as np
 import datetime
-#TODO: work on serial port comms, if anyone asks for it
-#from serial import Serial
+# TODO: work on serial port comms, if anyone asks for it
+from serial import Serial
 import socket
 import sys
+
 
 class getPulseApp(object):
 
@@ -21,8 +22,8 @@ class getPulseApp(object):
     """
 
     def __init__(self, args):
-        # Imaging device - must be a connected camera (not an ip camera or mjpeg
-        # stream)
+        # Imaging device - must be a connected camera
+        # (not an ip camera or mjpeg stream)
         serial = args.serial
         baud = args.baud
         self.send_serial = False
@@ -45,8 +46,8 @@ class getPulseApp(object):
                 ip, port = udp.split(":")
                 port = int(port)
             self.udp = (ip, port)
-            self.sock = socket.socket(socket.AF_INET, # Internet
-                 socket.SOCK_DGRAM) # UDP
+            self.sock = socket.socket(socket.AF_INET,  # Internet
+                                      socket.SOCK_DGRAM)  # UDP
 
         self.cameras = []
         self.selected_cam = 0
@@ -56,10 +57,11 @@ class getPulseApp(object):
                 self.cameras.append(camera)
             else:
                 break
+        self.cameras.append(Camera('/home/marcos/Downloads/marcao_rotated.mp4'))
         self.w, self.h = 0, 0
         self.pressed = 0
-        # Containerized analysis of recieved image frames (an openMDAO assembly)
-        # is defined next.
+        # Containerized analysis of recieved image frames
+        # (an openMDAO assembly) is defined next.
 
         # This assembly is designed to handle all image & signal analysis,
         # such as face detection, forehead isolation, time series collection,
@@ -76,7 +78,7 @@ class getPulseApp(object):
         self.plot_title = "Data display - raw signal (top) and PSD (bottom)"
 
         # Maps keystrokes to specified methods
-        #(A GUI window must have focus for these to work)
+        # (A GUI window must have focus for these to work)
         self.key_controls = {"s": self.toggle_search,
                              "d": self.toggle_display_plot,
                              "c": self.toggle_cam,
@@ -107,7 +109,6 @@ class getPulseApp(object):
         Locking the forehead location in place significantly improves
         data quality, once a forehead has been sucessfully isolated.
         """
-        #state = self.processor.find_faces.toggle()
         state = self.processor.find_faces_toggle()
         print("face detection lock =", not state)
 
@@ -197,6 +198,7 @@ class getPulseApp(object):
 
         # handle any key presses
         self.key_handler()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Webcam pulse detector.')
