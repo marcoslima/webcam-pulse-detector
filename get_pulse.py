@@ -1,5 +1,5 @@
 from lib.device import Camera
-from lib.processors_noopenmdao import findFaceGetPulse
+from lib.processors_noopenmdao import FindFaceGetPulse
 from lib.interface import plotXY, imshow, waitKey, destroyWindow
 from cv2 import moveWindow
 import argparse
@@ -11,7 +11,7 @@ import socket
 import sys
 
 
-class getPulseApp(object):
+class GetPulseApp(object):
 
     """
     Python application that finds a face in a webcam stream, then isolates the
@@ -69,7 +69,7 @@ class getPulseApp(object):
 
         # Basically, everything that isn't communication
         # to the camera device or part of the GUI
-        self.processor = findFaceGetPulse(bpm_limits=[50, 160],
+        self.processor = FindFaceGetPulse(bpm_limits=[50, 160],
                                           data_spike_limit=2500.,
                                           face_detector_smoothness=10.)
 
@@ -210,6 +210,6 @@ if __name__ == "__main__":
                         help='udp address:port destination for bpm data')
 
     args = parser.parse_args()
-    App = getPulseApp(args)
+    App = GetPulseApp(args)
     while True:
         App.main_loop()
