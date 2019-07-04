@@ -1,9 +1,9 @@
-import numpy as np
-import time
-import cv2
-import pylab
 import os
 import sys
+import time
+
+import cv2
+import numpy as np
 
 
 def resource_path(relative_path):
@@ -44,7 +44,10 @@ class FindFaceGetPulse(object):
             print("Cascade file not present!")
         self.face_cascade = cv2.CascadeClassifier(dpath)
 
-        self.face_rect = [1, 1, 2, 2]
+        self.face_rect = None
+        self.subface_rect = None
+        self.set_face_rect([1, 1, 2, 2])
+        self.last_frame = None
         self.last_center = np.array([0, 0])
         self.last_wh = np.array([0, 0])
         self.output_dim = 13
@@ -72,7 +75,7 @@ class FindFaceGetPulse(object):
         x, y, w, h = rect
         cv2.rectangle(self.frame_out, (x, y), (x + w, y + h), col, 1)
 
-    def get_subface_coord(self, fh_x, fh_y, fh_w, fh_h):
+    def _get_subface_coord(self, fh_x, fh_y, fh_w, fh_h):
         x, y, w, h = self.face_rect
         return [int(x + w * fh_x - (w * fh_w / 2.0)),
                 int(y + h * fh_y - (h * fh_h / 2.0)),
@@ -92,87 +95,114 @@ class FindFaceGetPulse(object):
         self.trained = not self.trained
         return self.trained
 
+    def _draw_main_menu(self, cam, color):
+        cv2.putText(self.frame_out,
+                    "Press 'C' to change camera (current: %s)" % str(cam),
+                    (10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, color)
+
+        cv2.putText(self.frame_out,
+                    "Press 'S' to lock face and begin",
+                    (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.25, color)
+
+        cv2.putText(self.frame_out,
+                    "Press 'Esc' to quit",
+                    (10, 75), cv2.FONT_HERSHEY_PLAIN, 1.25, color)
+
+    def _draw_sub_menu(self, cam, color):
+        cv2.putText(self.frame_out,
+                    "Press 'C' to change camera (current: %s)" % str(cam),
+                    (10, 25),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    1.25,
+                    color)
+        cv2.putText(self.frame_out, "Press 'S' to restart",
+                    (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.5, color)
+
+        cv2.putText(self.frame_out, "Press 'D' to toggle data plot",
+                    (10, 75), cv2.FONT_HERSHEY_PLAIN, 1.5, color)
+        cv2.putText(self.frame_out, "Press 'Esc' to quit",
+                    (10, 100), cv2.FONT_HERSHEY_PLAIN, 1.5, color)
+
+    def do_find_faces(self, cam, col, gray):
+        self._draw_main_menu(cam, col)
+
+        self.data_buffer, self.times, self.trained = [], [], False
+        detected = list(
+            self.face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.3,
+                minNeighbors=4,
+                minSize=(50, 50),
+                flags=cv2.CASCADE_SCALE_IMAGE))
+
+        if len(detected) > 0:
+            detected.sort(key=lambda a: a[-1] * a[-2])
+
+            if self.shift(detected[-1]) > 10:
+                self.set_face_rect(detected[-1])
+
+        forehead1 = self.subface_rect
+        self.draw_rect(self.face_rect, col=(255, 0, 0))
+
+        x, y, w, h = self.face_rect
+        cv2.putText(self.frame_out, "Face",
+                    (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+        self.draw_rect(forehead1)
+
+        x, y, w, h = forehead1
+        cv2.putText(self.frame_out, "Forehead",
+                    (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+        return
+
     def run(self, cam):
         self.times.append(time.time() - self.t0)
         self.frame_out = self.frame_in
         r, g, b = cv2.split(self.frame_in)
         gray = cv2.equalizeHist(g)
-        col = (100, 255, 100)
+        color = (100, 255, 100)
         if self.find_faces:
-            cv2.putText(
-                self.frame_out,
-                "Press 'C' to change camera (current: %s)" % str(
-                    cam),
-                (10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-            cv2.putText(
-                self.frame_out, "Press 'S' to lock face and begin",
-                (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-            cv2.putText(self.frame_out, "Press 'Esc' to quit",
-                        (10, 75), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-            self.data_buffer, self.times, self.trained = [], [], False
-            detected = list(
-                self.face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.3,
-                    minNeighbors=4,
-                    minSize=(50, 50),
-                    flags=cv2.CASCADE_SCALE_IMAGE))
-
-            if len(detected) > 0:
-                detected.sort(key=lambda a: a[-1] * a[-2])
-
-                if self.shift(detected[-1]) > 10:
-                    self.face_rect = detected[-1]
-            forehead1 = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
-            self.draw_rect(self.face_rect, col=(255, 0, 0))
-            x, y, w, h = self.face_rect
-            cv2.putText(self.frame_out, "Face",
-                        (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
-            self.draw_rect(forehead1)
-            x, y, w, h = forehead1
-            cv2.putText(self.frame_out, "Forehead",
-                        (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+            self.do_find_faces(cam, color, gray)
             return
-        if set(self.face_rect) == set([1, 1, 2, 2]):
-            return
-        cv2.putText(
-            self.frame_out, "Press 'C' to change camera (current: %s)" % str(
-                cam),
-            (10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-        cv2.putText(
-            self.frame_out, "Press 'S' to restart",
-            (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
-        cv2.putText(self.frame_out, "Press 'D' to toggle data plot",
-                    (10, 75), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
-        cv2.putText(self.frame_out, "Press 'Esc' to quit",
-                    (10, 100), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
 
-        forehead1 = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
+        if set(self.face_rect) == {1, 1, 2, 2}:
+            return
+
+        self._draw_sub_menu(cam, color)
+
+        # if self.last_frame is not None:
+        #     self.ajust_phase_correlation(gray)
+        # else:
+        #     self.last_frame = np.float64(gray)
+
+        forehead1 = self.subface_rect
         self.draw_rect(forehead1)
 
         vals = self.get_subface_means(forehead1)
 
         self.data_buffer.append(vals)
-        L = len(self.data_buffer)
-        if L > self.buffer_size:
+        data_buffer_len = len(self.data_buffer)
+        if data_buffer_len > self.buffer_size:
             self.data_buffer = self.data_buffer[-self.buffer_size:]
             self.times = self.times[-self.buffer_size:]
-            L = self.buffer_size
+            data_buffer_len = self.buffer_size
 
         processed = np.array(self.data_buffer)
         self.samples = processed
-        if L > 10:
+        if data_buffer_len > 10:
             self.output_dim = processed.shape[0]
 
-            self.fps = float(L) / (self.times[-1] - self.times[0])
-            even_times = np.linspace(self.times[0], self.times[-1], L)
+            self.fps = float(data_buffer_len) / (
+                    self.times[-1] - self.times[0])
+            even_times = np.linspace(self.times[0], self.times[-1],
+                                     data_buffer_len)
             interpolated = np.interp(even_times, self.times, processed)
-            interpolated = np.hamming(L) * interpolated
+            interpolated = np.hamming(data_buffer_len) * interpolated
             interpolated = interpolated - np.mean(interpolated)
             raw = np.fft.rfft(interpolated)
             phase = np.angle(raw)
             self.fft = np.abs(raw)
-            self.freqs = float(self.fps) / L * np.arange(L / 2 + 1)
+            self.freqs = float(self.fps) / data_buffer_len * \
+                         np.arange(data_buffer_len / 2 + 1)
 
             freqs = 60. * self.freqs
             idx = np.where((freqs > 50) & (freqs < 180))
@@ -196,7 +226,7 @@ class FindFaceGetPulse(object):
             self.bpm = self.freqs[idx2]
             self.idx += 1
 
-            x, y, w, h = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
+            x, y, w, h = self.subface_rect
             r = alpha * self.frame_in[y:y + h, x:x + w, 0]
             g = alpha * \
                 self.frame_in[y:y + h, x:x + w, 1] + \
@@ -207,15 +237,32 @@ class FindFaceGetPulse(object):
                                                           b])
             x1, y1, w1, h1 = self.face_rect
             self.slices = [np.copy(self.frame_out[y1:y1 + h1, x1:x1 + w1, 1])]
-            col = (100, 255, 100)
-            gap = (self.buffer_size - L) / self.fps
+            color = (100, 255, 100)
+            gap = (self.buffer_size - data_buffer_len) / self.fps
+
             # self.bpms.append(bpm)
             # self.ttimes.append(time.time())
+
             if gap:
                 text = "(estimate: %0.1f bpm, wait %0.0f s)" % (self.bpm, gap)
             else:
-                text = "(estimate: %0.1f bpm)" % (self.bpm)
+                text = "(estimate: %0.1f bpm)" % self.bpm
+
             tsize = 1
             cv2.putText(self.frame_out, text,
                         (int(x - w / 2), int(y)), cv2.FONT_HERSHEY_PLAIN,
-                        tsize, col)
+                        tsize, color)
+
+    def set_face_rect(self, face_rect):
+        self.face_rect = face_rect
+        self.subface_rect = self._get_subface_coord(0.5, 0.18, 0.25, 0.15)
+
+    def ajust_phase_correlation(self, gray):
+        current = np.float64(gray)
+        ret = cv2.phaseCorrelate(self.last_frame, current)
+        self.last_frame = current
+        ajusted = np.array([np.int(self.face_rect[0] - ret[0][0]),
+                            np.int(self.face_rect[1] - ret[0][1]),
+                            self.face_rect[2], self.face_rect[3]],
+                           dtype=np.int32)
+        self.set_face_rect(ajusted)
