@@ -169,10 +169,10 @@ class FindFaceGetPulse(object):
 
         self._draw_sub_menu(cam, color)
 
-        if self.last_frame is not None:
-            self.ajust_phase_correlation(gray)
-        else:
-            self.last_frame = np.float64(gray)
+        # if self.last_frame is not None:
+        #     self.ajust_phase_correlation(gray)
+        # else:
+        #     self.last_frame = np.float64(gray)
 
         forehead1 = self.subface_rect
         self.draw_rect(forehead1)
