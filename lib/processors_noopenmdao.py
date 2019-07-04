@@ -92,6 +92,45 @@ class FindFaceGetPulse(object):
         self.trained = not self.trained
         return self.trained
 
+    def do_find_faces(self, cam, col, gray):
+        cv2.putText(
+            self.frame_out,
+            "Press 'C' to change camera (current: %s)" % str(
+                cam),
+            (10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
+        cv2.putText(
+            self.frame_out, "Press 'S' to lock face and begin",
+            (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
+        cv2.putText(self.frame_out, "Press 'Esc' to quit",
+                    (10, 75), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
+        self.data_buffer, self.times, self.trained = [], [], False
+        detected = list(
+            self.face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.3,
+                minNeighbors=4,
+                minSize=(50, 50),
+                flags=cv2.CASCADE_SCALE_IMAGE))
+
+        if len(detected) > 0:
+            detected.sort(key=lambda a: a[-1] * a[-2])
+
+            if self.shift(detected[-1]) > 10:
+                self.face_rect = detected[-1]
+
+        forehead1 = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
+        self.draw_rect(self.face_rect, col=(255, 0, 0))
+
+        x, y, w, h = self.face_rect
+        cv2.putText(self.frame_out, "Face",
+                    (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+        self.draw_rect(forehead1)
+
+        x, y, w, h = forehead1
+        cv2.putText(self.frame_out, "Forehead",
+                    (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+        return
+
     def run(self, cam):
         self.times.append(time.time() - self.t0)
         self.frame_out = self.frame_in
@@ -99,46 +138,18 @@ class FindFaceGetPulse(object):
         gray = cv2.equalizeHist(g)
         col = (100, 255, 100)
         if self.find_faces:
-            cv2.putText(
-                self.frame_out,
-                "Press 'C' to change camera (current: %s)" % str(
-                    cam),
-                (10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-            cv2.putText(
-                self.frame_out, "Press 'S' to lock face and begin",
-                (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-            cv2.putText(self.frame_out, "Press 'Esc' to quit",
-                        (10, 75), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
-            self.data_buffer, self.times, self.trained = [], [], False
-            detected = list(
-                self.face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.3,
-                    minNeighbors=4,
-                    minSize=(50, 50),
-                    flags=cv2.CASCADE_SCALE_IMAGE))
-
-            if len(detected) > 0:
-                detected.sort(key=lambda a: a[-1] * a[-2])
-
-                if self.shift(detected[-1]) > 10:
-                    self.face_rect = detected[-1]
-            forehead1 = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
-            self.draw_rect(self.face_rect, col=(255, 0, 0))
-            x, y, w, h = self.face_rect
-            cv2.putText(self.frame_out, "Face",
-                        (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
-            self.draw_rect(forehead1)
-            x, y, w, h = forehead1
-            cv2.putText(self.frame_out, "Forehead",
-                        (x, y), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+            self.do_find_faces(cam, col, gray)
             return
-        if set(self.face_rect) == set([1, 1, 2, 2]):
+
+        if set(self.face_rect) == {1, 1, 2, 2}:
             return
-        cv2.putText(
-            self.frame_out, "Press 'C' to change camera (current: %s)" % str(
-                cam),
-            (10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
+
+        cv2.putText(self.frame_out,
+                    "Press 'C' to change camera (current: %s)" % str(cam),
+                    (10, 25),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    1.25,
+                    col)
         cv2.putText(
             self.frame_out, "Press 'S' to restart",
             (10, 50), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
@@ -153,26 +164,28 @@ class FindFaceGetPulse(object):
         vals = self.get_subface_means(forehead1)
 
         self.data_buffer.append(vals)
-        L = len(self.data_buffer)
-        if L > self.buffer_size:
+        data_buffer_len = len(self.data_buffer)
+        if data_buffer_len > self.buffer_size:
             self.data_buffer = self.data_buffer[-self.buffer_size:]
             self.times = self.times[-self.buffer_size:]
-            L = self.buffer_size
+            data_buffer_len = self.buffer_size
 
         processed = np.array(self.data_buffer)
         self.samples = processed
-        if L > 10:
+        if data_buffer_len > 10:
             self.output_dim = processed.shape[0]
 
-            self.fps = float(L) / (self.times[-1] - self.times[0])
-            even_times = np.linspace(self.times[0], self.times[-1], L)
+            self.fps = float(data_buffer_len) / (self.times[-1] - self.times[0])
+            even_times = np.linspace(self.times[0], self.times[-1],
+                                     data_buffer_len)
             interpolated = np.interp(even_times, self.times, processed)
-            interpolated = np.hamming(L) * interpolated
+            interpolated = np.hamming(data_buffer_len) * interpolated
             interpolated = interpolated - np.mean(interpolated)
             raw = np.fft.rfft(interpolated)
             phase = np.angle(raw)
             self.fft = np.abs(raw)
-            self.freqs = float(self.fps) / L * np.arange(L / 2 + 1)
+            self.freqs = float(self.fps) / data_buffer_len * \
+                         np.arange(data_buffer_len / 2 + 1)
 
             freqs = 60. * self.freqs
             idx = np.where((freqs > 50) & (freqs < 180))
@@ -208,13 +221,16 @@ class FindFaceGetPulse(object):
             x1, y1, w1, h1 = self.face_rect
             self.slices = [np.copy(self.frame_out[y1:y1 + h1, x1:x1 + w1, 1])]
             col = (100, 255, 100)
-            gap = (self.buffer_size - L) / self.fps
+            gap = (self.buffer_size - data_buffer_len) / self.fps
+
             # self.bpms.append(bpm)
             # self.ttimes.append(time.time())
+
             if gap:
                 text = "(estimate: %0.1f bpm, wait %0.0f s)" % (self.bpm, gap)
             else:
-                text = "(estimate: %0.1f bpm)" % (self.bpm)
+                text = "(estimate: %0.1f bpm)" % self.bpm
+
             tsize = 1
             cv2.putText(self.frame_out, text,
                         (int(x - w / 2), int(y)), cv2.FONT_HERSHEY_PLAIN,
