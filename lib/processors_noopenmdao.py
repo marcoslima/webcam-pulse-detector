@@ -1,9 +1,9 @@
-import numpy as np
-import time
-import cv2
-import pylab
 import os
 import sys
+import time
+
+import cv2
+import numpy as np
 
 
 def resource_path(relative_path):
@@ -47,6 +47,7 @@ class FindFaceGetPulse(object):
         self.face_rect = None
         self.subface_rect = None
         self.set_face_rect([1, 1, 2, 2])
+        self.last_frame = None
         self.last_center = np.array([0, 0])
         self.last_wh = np.array([0, 0])
         self.output_dim = 13
@@ -168,6 +169,11 @@ class FindFaceGetPulse(object):
 
         self._draw_sub_menu(cam, color)
 
+        if self.last_frame is not None:
+            self.ajust_phase_correlation(gray)
+        else:
+            self.last_frame = np.float64(gray)
+
         forehead1 = self.subface_rect
         self.draw_rect(forehead1)
 
@@ -185,7 +191,8 @@ class FindFaceGetPulse(object):
         if data_buffer_len > 10:
             self.output_dim = processed.shape[0]
 
-            self.fps = float(data_buffer_len) / (self.times[-1] - self.times[0])
+            self.fps = float(data_buffer_len) / (
+                    self.times[-1] - self.times[0])
             even_times = np.linspace(self.times[0], self.times[-1],
                                      data_buffer_len)
             interpolated = np.interp(even_times, self.times, processed)
@@ -219,7 +226,7 @@ class FindFaceGetPulse(object):
             self.bpm = self.freqs[idx2]
             self.idx += 1
 
-            x, y, w, h = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
+            x, y, w, h = self.subface_rect
             r = alpha * self.frame_in[y:y + h, x:x + w, 0]
             g = alpha * \
                 self.frame_in[y:y + h, x:x + w, 1] + \
@@ -249,3 +256,13 @@ class FindFaceGetPulse(object):
     def set_face_rect(self, face_rect):
         self.face_rect = face_rect
         self.subface_rect = self._get_subface_coord(0.5, 0.18, 0.25, 0.15)
+
+    def ajust_phase_correlation(self, gray):
+        current = np.float64(gray)
+        ret = cv2.phaseCorrelate(self.last_frame, current)
+        self.last_frame = current
+        ajusted = np.array([np.int(self.face_rect[0] - ret[0][0]),
+                            np.int(self.face_rect[1] - ret[0][1]),
+                            self.face_rect[2], self.face_rect[3]],
+                           dtype=np.int32)
+        self.set_face_rect(ajusted)
